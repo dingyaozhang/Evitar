@@ -1,0 +1,249 @@
+use strict;
+use warnings;
+
+#perl predictsiRNA.pl -i genome.fa -o 1.out
+#bin/RNAfold --infile='genome.fa' --outfile='out.out'
+use Getopt::Std;
+use vars qw($opt_i $opt_o $opt_d $opt_p $opt_t $opt_n);
+getopts('i:o:dp:t:n');
+
+my $tempfolder = '.temptempsi';
+my $depthoftempfolder = '../';
+if ($opt_t) {
+	die "Error: tempfolder path should not be an absolute path\n" if $opt_t =~ m/^\//;
+	die "Error: tempfolder path does not support ../; just remove it\n" if $opt_t =~ m/\.\.\//;
+	$opt_t =~ s/^\.\///;
+	$opt_t =~ s/\/$//;
+	$tempfolder = $opt_t;
+	$depthoftempfolder = "$opt_t/";
+	$depthoftempfolder =~ s/([^\/]*\/)/..\//g;
+}
+
+my $rnaprogram;
+if ($opt_p) {
+	if ($opt_p =~ m/^\//) {
+		$rnaprogram = "$opt_p";
+	}else{
+		$rnaprogram = "${depthoftempfolder}$opt_p";
+	}
+}else{
+	$rnaprogram = $0;
+	if ($rnaprogram =~ s/predictsiRNA$//) {
+		if ($rnaprogram =~ m/^\//) {
+			$rnaprogram = "$rnaprogram".'RNAplfold';
+			`chmod 777 $rnaprogram`;
+		}else{
+			`chmod 777 ${rnaprogram}RNAplfold`;
+			$rnaprogram = "${depthoftempfolder}$rnaprogram".'RNAplfold';
+		}
+		
+	}else{
+		die "wrong program name\n";
+	}
+}
+
+
+open IN, "$opt_i" or die;
+open OUT, '>', "$opt_o" or die;
+
+print OUT "Positon\tTarget_sequence\tsiRNA\tRank\tScores\tRanks\tSeed_Access_Prob\n";
+
+
+my $line1 = <IN>;
+my $sequence = '';
+while (<IN>) {
+	chomp;
+	$sequence = $sequence."$_";
+}
+
+$sequence =~ tr/a-z/A-Z/;
+$sequence =~ s/U/T/g;
+
+my $lenseq = length $sequence;
+
+my @indexs = &compute_access($sequence);
+my %accessability8  = %{$indexs[0]};
+
+
+my @sequence = split(//, $sequence);
+undef $sequence;
+
+
+my @outputlines;
+for (my $var = 24; $var < ($lenseq - 150); $var++) {
+
+	my @tempseq = @sequence[$var..($var+20)];
+	my $tempseq = \@tempseq;
+	my $tempseq2 = join('', @tempseq); 
+	my $siRNA = &reverseStrand($tempseq2);
+	next if $tempseq[20] ne 'A';
+	next if (($tempseq[0] eq 'A') && ($tempseq[1] eq 'A'));
+	next if $tempseq2 =~ m/(.)\1{3}/;
+	my $gcscorecon = &GCcontent($tempseq);
+	my $gcscore = 1;
+	if ($gcscorecon > 0.6) {
+		next;
+	}elsif ($gcscorecon <= 0.25) {
+		next;
+	}elsif($gcscorecon > 0.55) {
+		$gcscore = 1;
+	}else{
+		$gcscore = 3;
+	}
+
+
+	next if $tempseq2 =~ m/[^ACGT]/;
+	next if $tempseq2 =~ m/[CG]{7}/;
+	my $stemscore = &stemloop($tempseq);
+	my $speregscore = &Specialregionscore($tempseq);
+	#next if $tempseq2 =~ m/(AAAA|TTTT|CCCC|GGGG)/;
+	
+	my $position = $var+1;
+	my $overallscore;
+	if ($opt_d) {
+		$overallscore = $gcscore*$stemscore*$speregscore;
+	}else{
+		$overallscore = $gcscore*$speregscore;
+	}
+	#unless ($opt_n) {
+	#	if ($halfaccess{$position} >= 5) {
+	#		next; 
+	#	}else{
+	#		my $tsc = (5 - $halfaccess{$position})*(0.2);
+	#		$overallscore = $overallscore*$tsc;
+	#	}
+	#}
+	my $endposition = $position + 20;
+	unless ($opt_n) {
+		
+		if ($accessability8{$endposition} <= 0.01157) {
+			next;
+			undef $overallscore; 
+		}elsif($accessability8{$endposition} >= 0.1){
+			my $tsc = 5;
+			$overallscore = $overallscore*$tsc;
+		}else{
+			my $tsc = ($accessability8{$endposition} - 0.01157)/(0.1-0.01157);
+			$tsc = $tsc*5;
+			$overallscore = $overallscore*$tsc;
+		}
+	}
+	next if $overallscore == 0;
+	#print OUT "$position\t$tempseq2\t$siRNA\t$overallscore\t$accessability8{$endposition}\n";
+	push @outputlines, "$position\t$tempseq2\t$siRNA\t$overallscore\t$accessability8{$endposition}";
+}
+
+@outputlines = sort { (split(/\t/, $b))[3] <=> (split(/\t/, $a))[3] } @outputlines;
+
+my $ranki = 1;
+my $reali = 0;
+my $scorebefore = (split(/\t/, $outputlines[0]))[3]+100;
+for my $outputvar (@outputlines) {
+	$reali += 1;
+	my @outputvar = split(/\t/, $outputvar);
+	if ($scorebefore > $outputvar[3]) {
+		$ranki = $reali;
+		$scorebefore = $outputvar[3];
+	}elsif ($scorebefore == $outputvar[3]) {
+		$ranki = $ranki;
+	}else{
+		die "wrong rank\n";
+	}
+	print OUT "$outputvar[0]\t$outputvar[1]\t$outputvar[2]\t$ranki\t$outputvar[3]\t$ranki\t$outputvar[4]\n";
+}
+close IN;
+close OUT;
+
+
+
+
+sub GCcontent {
+	my @seq = @{$_[0]};
+	my $GCcounts = 0;
+	for my $onebase (@seq) {
+		$GCcounts += 1 if ($onebase eq 'G' || $onebase eq 'C');
+	}
+	my $GCcontent = $GCcounts / 21;
+	return($GCcontent);
+}
+
+sub Specialregionscore {
+	my @seq = @{$_[0]};
+	my $ATcounts = 0;
+	for my $onebase (@seq[14..19]) {
+		$ATcounts += 1 if ($onebase eq 'A' || $onebase eq 'T') ;
+	}
+	my $score = ((4.9*$ATcounts)/6) + 0.1;
+}
+
+
+sub reverseStrand {
+	my $seq = $_[0];
+	$seq = reverse($seq);
+	$seq =~ tr/ACGT/TGCA/;
+	return $seq;
+}
+
+sub stemloop {
+	my @seq = @{$_[0]};
+	my $include = 1;
+	for (my $var = 0; $var <= 7; $var++) {
+		for my $varl (5..8) {
+			my $str = join('', @seq[$var..($var+$varl)]);
+			my $rstr = &reverseStrand($str);
+			my $remainstr = join('', @seq[($var+$varl+1)..20]);
+			if ($remainstr =~ m/$rstr/) {
+				my $loop = length $`;
+				if ($loop >= 4) {
+					$include = 0.1;
+				} 
+			}
+		}
+	}
+	return $include;
+}
+
+
+sub compute_access
+{
+    my $seq=shift;
+    unless (-e $tempfolder) {
+    	`mkdir $tempfolder`;
+    }
+    chdir "$tempfolder";
+    `echo ">sequence\n$seq" | $rnaprogram -W 80 -L 40 -u 8`;
+    my $resultkey = &get_accessibility($seq);
+    my %accesshash = %{$resultkey};
+    chdir "${depthoftempfolder}";
+    unlink "$tempfolder/sequence_lunp";
+    unlink "$tempfolder/sequence_dp.ps";
+    rmdir "$tempfolder";
+   	my %access;
+    for my $var (keys %accesshash) {
+    	my @accessarray = @{$accesshash{$var}};
+    	$access{$var} = $accessarray[7];
+    }
+
+    my $index = \%access;
+    return $index;
+}
+
+sub get_accessibility
+{
+  my %hash;
+  open IN, "sequence_lunp" or die "sequence_lunp";
+  while(<IN>){
+    next if(/#/);
+    my @temp = split(/\s+/,$_);
+    my $number = shift(@temp);
+    #print $number;
+    next unless $number >= 21;
+    if (exists($hash{$number})) {
+    	die "wrong format of RNAplfold result $number\n";
+    }else{
+    	$hash{$number} = \@temp;
+    }
+  }
+  close IN;
+  return \%hash;
+}

@@ -1,0 +1,97 @@
+use strict;
+use warnings;
+
+use List::Util qw(max sum);
+use Getopt::Std;
+use vars qw($opt_i $opt_o);
+getopts('i:o:');
+
+my @output2;
+open IN, "$opt_i" or die;
+open OUT, '>', "$opt_o" or die;
+
+my $line1 = <IN>;
+print OUT "$line1";
+
+while (<IN>) {
+	chomp;
+	push @output2, $_;
+}
+close IN;
+open IN, "$opt_i" or die;
+$line1 = <IN>;
+my @ranksrecord;
+while (<IN>) {
+	chomp;
+	push @ranksrecord, (split(/\t/, $_))[5];
+}
+close IN;
+
+my @rankedranksrecord = ranktheranks(@ranksrecord);
+
+for my $outputvar (@output2) {
+	my @linevar = split(/\t/, $outputvar);
+	my $newranks = shift(@rankedranksrecord);
+	my @newranks = split(/\|/, $newranks);
+	$linevar[5] = $newranks;
+	$linevar[3] = max(@newranks);
+	$outputvar = join("\t", @linevar);
+}
+
+
+@output2 = sort { max(split(/\|/, (split(/\t/, $a))[5])) <=> max(split(/\|/, (split(/\t/, $b))[5])) || sum(split(/\|/, (split(/\t/, $a))[5])) <=> sum(split(/\|/, (split(/\t/, $b))[5])) } @output2;
+
+
+LINE: for my $outputvar (@output2) {
+	print OUT "$outputvar\n";
+}
+close OUT;
+
+sub rankedit {
+	my @inputarr = @_;
+	my @integers = sort {$a <=> $b} @inputarr;
+
+	my %seen;
+	my $thisi = 1;
+	for my $var (0..$#integers) {
+		if ($var == 0) {
+			$seen{$integers[$var]} = $var+1;
+		}else{
+
+			if ($integers[$var-1] < $integers[$var]) {
+				$thisi = $var + 1;
+				$seen{$integers[$var]} = $thisi;
+			}elsif ($integers[$var-1] = $integers[$var]){
+				$seen{$integers[$var]} = $thisi;
+			}else{
+				die "Error:wrong ranking\n";
+			}
+		}
+	}
+	my @outputarr;
+	for my $var (@inputarr) {
+		push @outputarr, $seen{$var};
+	}
+	return(@outputarr);
+}
+
+sub ranktheranks {
+	my @arrayin = @_;
+	my $colsnum = scalar (split(/\|/, $arrayin[0]));
+
+	for (my $ii = 0; $ii < $colsnum; $ii++) {
+		my @rankii;
+		for my $var (@arrayin) {
+			my @ranks = split(/\|/, $var);
+			push @rankii, $ranks[$ii];
+		}
+		@rankii = rankedit(@rankii);
+		for my $var (@arrayin) {
+			my @ranks = split(/\|/, $var);
+			my $thisrank = shift(@rankii);
+			$ranks[$ii] = $thisrank;
+			$var = join("|", @ranks);
+		}
+	}
+	return(@arrayin);
+}

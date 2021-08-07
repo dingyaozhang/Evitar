@@ -1,0 +1,83 @@
+use strict;
+use warnings;
+use Getopt::Std;
+
+our $opt_c = 2;
+use vars qw($opt_i $opt_o $opt_n $opt_c $opt_l);
+getopts('i:o:n:c:l:');
+
+use POSIX qw(floor);
+
+open IN, "$opt_i" or die;
+open OUT, '>', "$opt_o" or die;
+my @input;
+my $line1 = <IN>;
+print OUT "$line1";
+while (<IN>) {
+	print OUT "$_" if $_ =~ m/^#/;
+	next if $_ =~ m/^#/;
+	chomp;
+	push @input, $_;
+}
+@input = sort { (split(/\t/, $b))[3] <=> (split(/\t/, $a))[3] } @input;
+
+my %scoresystem;
+for my $var (@input) {
+	my @array = split(/\t/, $var);
+	my @samples = split(/\|/, $array[4]);
+	my @scores;
+	for my $varsample (@samples) {
+		my $samplescore;
+		if (exists($scoresystem{$varsample})) {
+			$samplescore = floor($scoresystem{$varsample} / $opt_c);
+			#$samplescore = 0 if $samplescore < 0;
+		}else{
+			$samplescore = 0;
+		}
+		push @scores, $samplescore;
+	}
+	my $thisscore = scorethearray(@scores);
+	for my $varsample (@samples) {
+		if (exists($scoresystem{$varsample})) {
+			$scoresystem{$varsample} += 1;
+		}else{
+			$scoresystem{$varsample} = 1;
+		}
+		
+	}
+	$array[3] = $thisscore;
+	$var = join("\t", @array);
+}
+
+@input = sort { (split(/\t/, $a))[3] <=> (split(/\t/, $b))[3] } @input;
+my $recordi = 0;
+for my $var (@input) {
+	$recordi += 1;
+	last if $recordi > $opt_l;
+	print OUT "$var\n";
+}
+close OUT;
+
+
+sub scorethearray {
+	my $inputlen = scalar @_;
+	if ($inputlen == 1) {
+		return $_[0];
+	}elsif ($inputlen >= 2) {
+		my @sorted = sort {$a <=> $b} @_;
+		my $finalscore;
+		
+		if ($sorted[0] == $sorted[1]) {
+			my $count1 = grep { $_ == $sorted[0]  } @sorted;
+			$finalscore = $sorted[0] - $count1 / $opt_n;
+		}else{
+			my $count1 = grep { $_ == $sorted[1]  } @sorted;
+			$finalscore = $sorted[0] + $count1 / $opt_n;
+		}
+	}else{
+		die "wrong input scores systems\n";
+		return "wrong!";
+	}
+}
+
+

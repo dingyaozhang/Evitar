@@ -1,0 +1,228 @@
+use strict;
+use warnings;
+
+use Getopt::Std;
+use vars qw($opt_o $opt_a);
+getopts('o:a:');
+
+#open ERR2, '>', "ERR2.txt" or die;
+#perl analyze_align_out.pl -o aa2
+$opt_a =~ s/\/$//;
+if ($opt_o =~ m/\/$/) {
+	die "-o should a prefix of files instead of folder !\n"
+}
+
+my @files;
+open ANNO, "$opt_a/outfiles.txt" or die;
+
+while (<ANNO>) {
+	chomp;
+	push @files, "$opt_a/$_";
+}
+close ANNO;
+
+local $/ = '>';
+
+
+
+my @totalrecord = ();
+my $output_ref = '';
+my %record;
+my %record2;
+my %filerecord;
+my %filerecordn;
+my %basecovers;
+my %gapmutation;
+#print "00\n";
+for my $var (@files) {
+	#print "0\n";
+	my $varnum = $var;
+	$varnum =~ s/^$opt_a\///;
+	$varnum =~ s^\.out^^;
+	open IN, "$var" or die "$var could not be opened\n";
+	my $line1 = <IN>;
+	my $ref = <IN>;
+	my $new = <IN>;
+	chomp($ref);
+	chomp($new);
+	$ref =~ s/^[^\n]+\n//;
+	$new =~ s/^[^\n]+\n//;
+	$ref =~ s/\n//g;
+	$new =~ s/\n//g;
+
+	$ref =~ tr/a-z/A-Z/;
+	$new =~ tr/a-z/A-Z/;
+	$ref =~ s/U/T/g;
+	$new =~ s/U/T/g;
+	$ref =~ tr/ACGTN-/N/c;
+	$new =~ tr/ACGTN-/N/c;
+
+	if ($output_ref eq '') {
+		$output_ref = $ref;
+		
+	}
+
+	my $purenew = $new;
+	$purenew =~ s/-//g;
+	$purenew =~ s/N//g;
+	next if length $purenew <= 25000;
+	#my $temp = ($purenew =~ s/N//g);
+	#print ERR2 "$var\t$temp\n";
+	$new =~ s/(-+N)/$1 =~ s^-^N^rg/e;
+	$new =~ s/(N-+)/$1 =~ s^-^N^rg/e;
+	my @ref = split(//, $ref);
+	my @new = split(//, $new);
+	my @record;
+
+	my $nowi = 0;
+	my $recordi = 0;
+	my $arrayi = -1;
+
+
+
+	if (length $ref == length $new) {
+		for (my $vari = 0; $vari < length $ref; $vari++) {
+			my $refbase = $ref[$vari];
+			my $newbase = $new[$vari];
+			die "wrong base\t$newbase\n" unless $newbase =~ m/(A|C|G|T|-|N)/;
+			if ($refbase =~ m/(A|C|G|T)/) {
+				$arrayi += 1;
+				if ($refbase eq $newbase) {
+					push @record, 0;
+				}elsif ($newbase eq 'N') {
+					push @record, 0;
+					if (exists($filerecordn{$arrayi})) {
+						$filerecordn{$arrayi} = $filerecordn{$arrayi}."|$varnum";
+					}else{
+						$filerecordn{$arrayi} = "$varnum";
+					}
+				}else{
+					push @record, 1;
+					if (exists($filerecord{$arrayi})) {
+						$filerecord{$arrayi} = $filerecord{$arrayi}."|$varnum";
+					}else{
+						$filerecord{$arrayi} = "$varnum";
+					}
+				}
+				if ($newbase =~ m/(A|C|G|T|-)/)  {
+					#print ERR2 "$vari\t$arrayi\t$newbase\n";
+					if (exists($basecovers{$arrayi})) {
+						$basecovers{$arrayi} = $basecovers{$arrayi} + 1;
+					}else{
+						$basecovers{$arrayi} = 1;
+					}
+					
+				}
+				$nowi = $vari;	
+			}elsif ($refbase eq '-'){
+				if ($arrayi == -1)  {
+					if ($ref[$vari+1] ne '-' && $new[$vari+1] ne 'N') {
+						if (exists($record{0})) {
+							$record{0} = $record{0} + 1;
+							$record2{0} = $record2{0}."|$varnum";
+						}else{
+							$record{0} = 1;
+							$record2{0} = $varnum;
+						}
+					}
+				}else{
+					if ($ref[$vari-1] ne '-' && $new[$vari-1] ne 'N') {
+						if (exists($record{$arrayi})) {
+							$record{$arrayi} = $record{$arrayi} + 1;
+							$record2{$arrayi} = $record2{$arrayi}."|$varnum";
+						}else{
+							$record{$arrayi} = 1;
+							$record2{$arrayi} = $varnum;
+						}
+					}
+				}
+				###insert_mutation
+				if ($vari >= 1)  {
+					if ($new[$vari-1] =~ m/(A|C|G|T)/ ) {
+						if ($new[$vari-1] eq $ref[$vari-1]) {
+							if (exists($gapmutation{$arrayi})) {
+								$gapmutation{$arrayi} = $gapmutation{$arrayi} + 1;
+							}else{
+								$gapmutation{$arrayi} = 1;
+							}
+						}
+						
+					}
+				}
+
+				if ($vari <= ((length $ref) - 2))  {
+					if ($new[$vari+1] =~ m/(A|C|G|T)/ ) {
+						if ($new[$vari+1] eq $ref[$vari+1]) {
+							if (exists($gapmutation{$arrayi+1})) {
+								$gapmutation{$arrayi+1} = $gapmutation{$arrayi+1} + 1;
+							}else{
+								$gapmutation{$arrayi+1} = 1;
+							}
+						}
+						
+					}
+				}
+				
+			}else{
+				#die "strange word $refbase\n";
+				#not caluculated mutations in Ns for ref genome.
+				$nowi = $vari;
+				$arrayi += 1;
+			}
+		}
+		if (scalar @totalrecord >= 2) {
+			for (my $ii = 0; $ii < scalar @record; $ii++) {
+				$totalrecord[$ii] = $totalrecord[$ii] + $record[$ii];
+			}
+			#totalrecord[$ii] = $totalrecord[$ii] + $record[$ii];
+		}else{
+			@totalrecord = @record;
+		}
+		
+	}else{
+		die "diff length\n";
+	}
+	#print ERR "$arrayi\n"; 29902+1=29903
+	close IN;
+}
+
+
+my @output_ref = split(//, $output_ref);
+
+
+
+open OUT, '>', "$opt_o" or die;
+for (my $vari = 0; $vari < length $output_ref; $vari++) {
+	my $totalcover;
+	my $mutationrate;
+	if (exists($basecovers{$vari})) {
+		$totalcover = $basecovers{$vari};
+	}else{
+		print "position is $vari\nbase is $output_ref[$vari]\n";#\t$totalrecord[$vari]\t$filerecord{$vari}\n
+		print OUT "$output_ref[$vari]\tNA\tNA\tNA\tNA\n";
+		next;
+	}
+	$mutationrate = $totalrecord[$vari] / $totalcover;
+	if ($output_ref[$vari] ne 'N') {
+		my $nfiles;
+		if (exists($filerecordn{$vari})) {
+			$nfiles = $filerecordn{$vari};
+		}else{
+			$nfiles = '';
+		}
+		if (exists($filerecord{$vari})) {
+			print OUT "$output_ref[$vari]\t$totalrecord[$vari]\t$totalcover\t$mutationrate\t$filerecord{$vari}\t$nfiles\n";
+		}else{
+			print OUT "$output_ref[$vari]\t$totalrecord[$vari]\t$totalcover\t$mutationrate\t\t$nfiles\n";
+		}
+		if (exists($record{$vari})) {
+			my $mutationrate2 = $record{$vari} / $totalcover;
+			print OUT "$output_ref[$vari]-\t$record{$vari}\t$totalcover\t$mutationrate2\t$record2{$vari}\n";
+		}
+	}else{
+		print OUT "$output_ref[$vari]\tNA\tNA\tNA\tNA\n";
+	}
+}
+close OUT;
+
+

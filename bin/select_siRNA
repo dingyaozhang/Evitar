@@ -1,0 +1,163 @@
+use strict;
+use warnings;
+
+
+use Getopt::Std;
+use vars qw($opt_i $opt_o $opt_r);
+getopts('i:o:r:');
+
+use List::Util qw(max sum);
+
+my %ref;
+open REF, "$opt_r" or die;
+my $linecount = 0;
+my %nhash;
+my %muthash;
+my %gaphash;
+my $allsamplenumber = -5;
+while (<REF>) {
+	chomp;
+	my @array = split(/\t/, $_, -1);
+	if ($array[0] =~ s/-$//) {
+		my @gapsamples = split(/\|/, $array[4]);
+		$gaphash{$linecount} =  \@gapsamples;
+	}else{
+		$linecount += 1;
+		my @mutationsamples = split(/\|/, $array[4]);
+		my @nsamples = split(/\|/, $array[5]);
+		if ($allsamplenumber == -5) {
+			$allsamplenumber = $array[2] + (scalar @nsamples);
+		}
+		$muthash{$linecount} =  \@mutationsamples;
+		$nhash{$linecount} =  \@nsamples;
+	}
+}
+close REF;
+
+
+
+open IN, "$opt_i" or die;
+open OUT, '>', "$opt_o" or die;
+
+my $line1 = <IN>;
+chomp($line1);
+my @line1 = split(/\t/, $line1);
+my $line11 = shift(@line1);
+my $line12 = shift(@line1);
+my $line13 = shift(@line1);
+my $line14 = shift(@line1);
+my $line15 = shift(@line1);
+my $line16 = shift(@line1);
+my $line1out = join("\t", @line1);
+print OUT "$line11\t$line12\t$line13\t$line14\t$line15\t$line16\tConservation_Value\t$line1out\n";
+
+my @outputlines;
+while (<IN>) {
+	chomp;
+	my @array = split(/\t/, $_);
+	
+	my @narray;
+	my @mutarray;
+	my @gaparray;
+	for (my $vari = 0; $vari < 22; $vari++) {
+		my $basestudy = $array[0] + $vari;
+		my @ntemp = @{$nhash{$basestudy}} if exists($nhash{$basestudy});
+		my @muttemp = @{$muthash{$basestudy}} if exists($muthash{$basestudy});
+		my @gaptemp = @{$gaphash{$basestudy}} if ($vari <= 21 && exists($gaphash{$basestudy}));
+		push @narray, @ntemp;
+		push @mutarray, @muttemp;
+		push @gaparray, @gaptemp if $vari <= 21;
+	}
+	@narray = &unrepeat(@narray);
+	@mutarray = &unrepeat(@mutarray);
+	@gaparray = &unrepeat(@gaparray);
+	my @allmuts = @mutarray;
+	push @allmuts, @gaparray;
+	@allmuts = &unrepeat(@allmuts);
+	
+	my @realmut = &diff(\@allmuts, \@narray);
+	my $useoverallnumber = $allsamplenumber - (scalar @narray);
+	my $evolutionratio = (scalar @realmut) / $useoverallnumber;
+	my $scorenew;
+	if ($evolutionratio >= 0.05) {
+		next;
+		#$scorenew = 0;
+	}else{
+		$scorenew = 1-($evolutionratio / 0.05);
+	}
+	my @outarray = @array;
+	shift(@outarray);
+	shift(@outarray);
+	shift(@outarray);
+	shift(@outarray);
+	shift(@outarray);
+	shift(@outarray);
+	my $outarray = join("\t", @outarray);
+	push @outputlines, "$array[0]\t$array[1]\t$array[2]\t$scorenew\t$array[4]\t$array[5]\t$evolutionratio\t$outarray";
+	#print OUT "$array[0]\t$array[1]\t$array[2]\t$scorenew\t$evolutionratio\t$outarray\n";
+}
+close IN;
+
+
+@outputlines = sort { (split(/\t/, $b))[3] <=> (split(/\t/, $a))[3] } @outputlines;
+my @output2;
+my $realrank = 0;
+my $scorebefore = (split(/\t/, $outputlines[0]))[3]+100;
+for my $outputvar (@outputlines) {
+	my @linevar = split(/\t/, $outputvar);
+	my $one = shift(@linevar);
+	my $two = shift(@linevar);
+	my $three = shift(@linevar);
+	my $scorenew = shift(@linevar);
+	if ($scorebefore > $scorenew) {
+		$realrank += 1;
+		$scorebefore = $scorenew;
+	}elsif ($scorebefore == $scorenew) {
+		$realrank = $realrank;
+	}else{
+		die "wrong rank\n";
+	}
+	my $scores = shift(@linevar);
+	my $ranks = shift(@linevar);
+	my $outarray = join("\t", @linevar);
+	#print OUT "$one\t$two\t$three\t$scorenew\t$realrank\t$scores|$scorenew\t$ranks|$realrank\t$outarray\n";
+	push @output2, "$one\t$two\t$three\t$realrank\t$scorenew|$scores\t$realrank|$ranks\t$outarray";
+
+}
+undef @outputlines;
+@output2 = sort { max(split(/\|/, (split(/\t/, $a))[5])) <=> max(split(/\|/, (split(/\t/, $b))[5])) || sum(split(/\|/, (split(/\t/, $a))[5])) <=> sum(split(/\|/, (split(/\t/, $b))[5])) } @output2;
+
+for my $outputvar (@output2) {
+	my @linevar = split(/\t/, $outputvar);
+	my @ranks = split(/\|/, $linevar[5]);
+	$linevar[3] = max(@ranks);
+	my $outarray = join("\t", @linevar);
+	print OUT "$outarray\n";
+}
+close OUT;
+sub unrepeat {
+	my @array = @_;
+	my %hash;
+	for my $var (@array) {
+		$hash{$var} = 1;
+	}
+	my @out = sort {$a <=> $b} keys(%hash);
+	return @out;
+}
+
+sub diff {
+	my @array = @{$_[0]};
+	my @decrease = @{$_[1]};
+	my %hash;
+	my %hash2;
+	for my $var (@decrease) {
+		$hash{$var} = 1;
+	}
+	for my $var (@array) {
+		unless (exists($hash{$var})) {
+			$hash2{$var} = 1;
+		}
+	}
+	my @out = sort {$a <=> $b} keys(%hash2);
+	return @out;
+}

@@ -1,0 +1,576 @@
+use strict;
+use warnings;
+
+
+use Getopt::Std;
+our $opt_P = 1;
+our $opt_A = 20;
+our $opt_M = 20000;
+our $opt_c = 1;
+our $opt_l = 300;
+use vars qw($opt_i $opt_o $opt_l $opt_c $opt_r $opt_m $opt_w $opt_P $opt_A $opt_M $opt_F $opt_n);
+getopts('i:o:l:c:r:m:w:P:A:M:Fn:');
+
+use threads;
+use threads::shared;
+use POSIX qw(floor);
+
+use List::Util qw(max min sum);
+
+######################################
+my %geneweight;
+my %refseqs;
+my %adjustfactors;
+my %refseqsmir;
+my %adjustfactorsmir;
+my @refkeys;
+my @refkeysmir;
+
+unless ($opt_F) {
+
+if ($opt_w) {
+	open WEIGHT, "$opt_w" or die;
+	my $wl1 = <WEIGHT>;
+	while (<WEIGHT>) {
+		chomp;
+		my @array = split(/\t/, $_);
+		next if $array[2] == 0;
+		my $purename = $array[0];
+		$geneweight{$purename} = $array[2];
+	}
+	close WEIGHT;
+}
+
+
+local $/ = ">";
+open REF, "$opt_r" or die;
+my $fastanull = <REF>;
+
+while (<REF>) {
+	chomp;
+	next if length $_ == 0;
+	my @array = split(/\n/, $_);
+	my $name = shift(@array);
+	my $seq = join("", @array);
+	my $purename = $name;
+	if ($opt_w) {
+		if (exists($geneweight{$purename})) {
+			$adjustfactors{$purename} = $geneweight{$purename};
+		}else{
+			next;
+		}
+	}
+	$seq =~ tr/a-z/A-Z/;
+	$seq =~ s/U/T/g;
+	if (exists($refseqs{$purename})) {
+		$refseqs{$purename} = "$seq\t\t\t\t\t\t\t\t\t\t$refseqs{$purename}";
+	}else{
+		$refseqs{$purename} = $seq;
+	}
+}
+close REF;
+
+
+open REF, "$opt_m" or die;
+$fastanull = <REF>;
+
+while (<REF>) {
+	chomp;
+	next if length $_ == 0;
+	my @array = split(/\n/, $_);
+	my $name = shift(@array);
+	my $seq = join("", @array);
+	my $purename = $name;
+	if ($opt_w) {
+		if (exists($geneweight{$purename})) {
+			$adjustfactorsmir{$purename} = $geneweight{$purename};
+		}else{
+			next;
+		}
+	}
+	$seq =~ tr/a-z/A-Z/;
+	$seq =~ s/U/T/g;
+	if (exists($refseqsmir{$purename})) {
+		$refseqsmir{$purename} = "$seq\t\t\t\t\t\t\t\t\t\t$refseqsmir{$purename}";
+	}else{
+		$refseqsmir{$purename} = $seq;
+	}
+}
+close REF;
+
+@refkeys = sort {$a cmp $b} keys(%refseqs);
+@refkeysmir = sort {$a cmp $b} keys(%refseqsmir);
+}
+
+local $/ = "\n";
+#######################
+
+
+open IN, "$opt_i" or die;
+open OUT, '>', "$opt_o" or die;
+my @input;
+my $line1 = <IN>;
+unless ($opt_F) {
+	chomp($line1);
+	my @line1 = split(/\t/, $line1);
+	splice @line1, 8, 0, qw(Wholetarget_Score Parttarget_Score MIRtarget_Score);
+	my $output = join("\t", @line1);
+	print OUT "$output\n";
+}else{
+	print OUT "$line1";
+}
+
+my %allstrains;
+my $numforsirna = 0;
+while (<IN>) {
+	print OUT "$_" if $_ =~ m/^#/;
+	next if $_ =~ m/^#/;
+	$numforsirna += 1;
+	chomp;
+	my @array = split(/\t/, $_);
+	my @samples = split(/\|/, $array[4]);
+	my %temphash;
+	for my $vartemptemp (@samples) {
+		$temphash{$vartemptemp} = 1;
+	}
+	@samples = sort {$a <=> $b} keys %temphash;
+	$array[3] = scalar @samples;
+	$array[4] = join("|", @samples);
+	my $new = join("\t", @array);
+	push @input, $new;
+
+	for my $varsample (@samples) {
+		if (exists($allstrains{$varsample})) {
+			$allstrains{$varsample} = $allstrains{$varsample}."\t$numforsirna";
+		}else{
+			$allstrains{$varsample} = $numforsirna;
+		}
+	}
+}
+#
+
+my $strainnumber = scalar keys %allstrains;
+my @allstrains = sort {$a cmp $b} keys(%allstrains);
+@input = sort { (split(/\t/, $b))[3] <=> (split(/\t/, $a))[3] } @input;
+
+my %samplesimilar;
+
+if ($opt_n && $opt_n >= 2){
+	
+	my @allremains;
+	for (my $var = 0; $var < $strainnumber-1; $var++) { #ncoreposition
+		my $varsam = $allstrains[$var];
+		for (my $var2 = $var+1; $var2 < $strainnumber; $var2++) {
+			my $var2sam = $allstrains[$var2];
+			my @tarray = ($varsam, $var2sam);
+			push @allremains, \@tarray;
+		}
+	}
+	my $oneblocknum = floor((scalar @allremains) / $opt_n) + 1;
+	my @chunks;
+	my @threads;
+	push @chunks, [splice(@allremains, 0, $oneblocknum)] while @allremains;
+	my $ncoresrun = sub {
+		my %foutput;
+		for my $keyone (@{$_[0]}) {
+			my @ttarr = @{$keyone};
+			my @samples1 = split(/\t/, $allstrains{$ttarr[0]});
+			my @samples2 = split(/\t/, $allstrains{$ttarr[1]});
+			my %samplessum;
+			for my $varsample (@samples1) {
+				$samplessum{$varsample} = 1;
+			}
+			my $overlapi = 0;
+			for my $varsample (@samples2) {
+				$overlapi += 1 if exists $samplessum{$varsample};
+				$samplessum{$varsample} += 1;
+			}
+			my $population = scalar keys %samplessum;
+			my $similar = $overlapi / $population;
+			$foutput{"$ttarr[0]\t$ttarr[1]"} = $similar;
+			$foutput{"$ttarr[1]\t$ttarr[0]"} = $similar;
+		}
+		return \%foutput;
+	};
+	foreach (@chunks) {
+   		push @threads, threads->new($ncoresrun, $_);
+	}
+	#my @ncfinalouts;
+	my %output;
+	foreach (@threads) {
+   		my $out1 = $_->join();
+		%output = (%output, %{$out1});
+	}
+	%samplesimilar = %output;
+}else{
+	for (my $var = 0; $var < $strainnumber-1; $var++) { #ncoreposition
+		my $varsam = $allstrains[$var];
+		for (my $var2 = $var+1; $var2 < $strainnumber; $var2++) {
+			my $var2sam = $allstrains[$var2];
+			my @samples1 = split(/\t/, $allstrains{$varsam});
+			my @samples2 = split(/\t/, $allstrains{$var2sam});
+			my %samplessum;
+			for my $varsample (@samples1) {
+				$samplessum{$varsample} = 1;
+			}
+			my $overlapi = 0;
+			for my $varsample (@samples2) {
+				$overlapi += 1 if exists $samplessum{$varsample};
+				$samplessum{$varsample} += 1;
+			}
+			my $population = scalar keys %samplessum;
+			my $similar = $overlapi / $population;
+			$samplesimilar{"$varsam\t$var2sam"} = $similar;
+			$samplesimilar{"$var2sam\t$varsam"} = $similar;
+		}
+	}
+}
+
+
+my %weighted_sample;
+if ($opt_n && $opt_n >= 2){
+	
+	my @allremains;
+	for (my $var = 0; $var < $strainnumber; $var++) { #ncoreposition
+		push @allremains, $var;
+	}
+	my $oneblocknum = floor((scalar @allremains) / $opt_n) + 1;
+	my @chunks;
+	my @threads;
+	push @chunks, [splice(@allremains, 0, $oneblocknum)] while @allremains;
+	my $ncoresrun = sub {
+		my %foutput;
+		for my $keyone (@{$_[0]}) {
+			my $varsam = $allstrains[$keyone];
+			my $multiplesimilar = 1;
+			for (my $var2 = 0; $var2 < $strainnumber; $var2++) {
+				my $var2sam = $allstrains[$var2];
+				next if $var2sam eq $varsam;
+				my $similar = $samplesimilar{"$varsam\t$var2sam"};
+				$multiplesimilar = $multiplesimilar + $similar;
+			}
+			$multiplesimilar = 1 / $multiplesimilar;
+			$foutput{$varsam} = $multiplesimilar;
+		}
+		return \%foutput;
+	};
+	foreach (@chunks) {
+   		push @threads, threads->new($ncoresrun, $_);
+	}
+	#my @ncfinalouts;
+	my %output;
+	foreach (@threads) {
+   		my $out1 = $_->join();
+		%output = (%output, %{$out1});
+	}
+	%weighted_sample = %output;
+}else{
+	for (my $var = 0; $var < $strainnumber; $var++) { #ncoreposition
+		my $varsam = $allstrains[$var];
+		my $multiplesimilar = 1;
+		for (my $var2 = 0; $var2 < $strainnumber; $var2++) {
+			my $var2sam = $allstrains[$var2];
+			next if $var2sam eq $varsam;
+			my $similar = $samplesimilar{"$varsam\t$var2sam"};
+			$multiplesimilar = $multiplesimilar + $similar;
+		}
+		$multiplesimilar = 1 / $multiplesimilar;
+		$weighted_sample{$varsam} = $multiplesimilar;
+	}
+}
+
+
+
+my %covercondition;
+
+while ($line1 = shift(@input)) {
+	
+	my @array = split(/\t/, $line1);
+	my @samples = split(/\|/, $array[4]);
+	my %temphash;
+	for my $varsample (@samples) {
+		$temphash{$varsample} += 1;
+	}
+	
+	my @offres = targetit($array[1]);
+	my $offres = shift(@offres);
+	if ($offres == 1) {
+		my @line1 = split(/\t/, $line1);
+		splice @line1, 8, 0, @offres;
+		my $output = join("\t", @line1);
+		print OUT "$output\n";
+		%covercondition = %temphash;
+		last;
+	}elsif($offres == 0) {
+		next;
+	}else{
+		die "wrong offtarget result $offres\n";
+	}
+}
+my $ti = 1;
+
+
+LINE: while (@input) {
+
+
+	my @scores;
+	for my $var (@input) {
+		my @array = split(/\t/, $var);
+		my @samples = split(/\|/, $array[4]);
+		my $thisscore = newscore(@samples);
+		#print "$thisscore\n";
+		push @scores, $thisscore;
+	}
+	#die "stage4\n";
+	my @outputsamples;
+	while (@input) {
+		#print "b\n";
+		#die "stage4.5\n";
+		my $maxposition;
+		my $maxvalue = max(@scores);
+		if ($maxvalue == 0) {
+			###reboot the %covercondition;
+			#print OUT "reboot1\n";
+			my %temp;
+			for my $varkey (keys(%covercondition)) {
+				if ($covercondition{$varkey} >= $opt_c + 1) {
+					$temp{$varkey} = $covercondition{$varkey} - $opt_c;
+				}
+			}
+			%covercondition = %temp;
+			next LINE;
+			###reboot the %covercondition;
+		}
+		my $index = 0;
+		AB:for my $var (@scores) {
+			
+			if ($var == $maxvalue) {
+				$maxposition = $index;
+				last AB;
+			}
+			$index += 1;
+		}
+		my $output = splice @input, $maxposition, 1;
+		splice @scores, $maxposition, 1;
+		my @output = split(/\t/, $output);
+		@outputsamples = split(/\|/, $output[4]);
+		#$output[3] = $maxvalue;
+		
+		
+		my @offres = targetit($output[1]);
+		my $offres = shift(@offres);
+		if ($offres == 1) {
+			#print @output;
+			splice @output, 8, 0, @offres;
+			$output = join("\t", @output);
+			print OUT "$output\n";
+			$ti += 1;
+			last;
+		}elsif($offres == 0) {
+			next;
+		}else{
+			die "wrong offtarget result $offres\n";
+		}
+
+	}
+	
+	last if scalar @input == 0;
+
+	for my $varsample (@outputsamples) {
+		$covercondition{$varsample} += 1;
+	}
+	if ((scalar keys %covercondition) == $strainnumber) {
+		###reboot the %covercondition;
+		my %temp;
+		my $reboot = 1;
+		CCA:for my $varkey (keys(%covercondition)) {
+			if ($covercondition{$varkey} < $opt_c) {
+				$reboot = 0;
+				last CCA;
+			}
+			if ($covercondition{$varkey} >= $opt_c + 1) {
+				$temp{$varkey} = $covercondition{$varkey} - $opt_c;
+			}
+		}
+		if ($reboot == 1) {
+			%covercondition = %temp;
+		}
+		###reboot the %covercondition;
+	}
+	if ($ti >= $opt_l) {
+		last LINE;
+	}
+}
+
+sub newscore {
+	my @input = @_;
+	my $output = 0;
+	for my $var (@input) {
+		#die "$var\n" unless exists $covercondition{$var};
+		#die "$var\n" unless exists $weighted_sample{$var};
+		my $tempscore;
+		if (exists($covercondition{$var})) {
+			$tempscore = $covercondition{$var};
+		}else{
+			$tempscore = 0;
+		}
+		$tempscore = max(($opt_c-$tempscore)/$opt_c, 0);
+		$tempscore = $tempscore*$weighted_sample{$var};
+		$output = $output + $tempscore;
+	}
+	return $output;
+}
+
+sub coverscores {
+	my %covercond = %{$_[0]};
+	my %output;
+	for my $var (@allstrains) {#ncoreposition
+		
+		if (exists($covercond{$var})) {
+			$output{$var} = ($strainnumber)**(-($covercond{$var} / $opt_c));
+		}else{
+			my $oldsimilar = -10;
+			my $coverageall = 0;
+			for my $var2 (@allstrains) { 
+				next if $var eq $var2;
+				next unless exists($covercond{$var2});
+				my $similar = $samplesimilar{"$var\t$var2"};
+				if ($similar > $oldsimilar) {
+					$oldsimilar = $similar;
+					$coverageall = $covercond{$var2};
+				}elsif ($similar == $oldsimilar) {
+					$coverageall = $covercond{$var2} if $coverageall <= $covercond{$var2};
+				}else{
+					next;
+				}
+			}
+
+			if ($oldsimilar == -10) {
+				$output{$var} = 1;
+			}else{
+				$coverageall = $coverageall / $opt_c; 
+				$coverageall = $coverageall*$oldsimilar;
+				$output{$var} = ($strainnumber)**(-$coverageall);
+			}
+			
+		}
+		
+	}
+	return \%output;
+
+
+}
+
+
+
+sub eightmermatch {
+	my $mrnatarget = $_[0];
+	my @seqnames = @{$_[1]};
+	my %seqhash = %{$_[2]};
+	my $seedseq = substr $mrnatarget, 13, 8;
+
+
+	
+	my @names;
+	for my $seqone (@seqnames) {#ncoreposition
+		my $genomeseq = $seqhash{$seqone};
+		if ($genomeseq =~ m/$seedseq/) {
+			push @names, $seqone;
+		}
+	}
+	return @names;
+	
+}
+
+sub wholematch {
+	my $mrnatarget = $_[0];
+	my @seqnames = @{$_[1]};
+	my %seqhash = %{$_[2]};
+	
+
+
+	my @names;
+	for my $seqone (@seqnames) {#ncoreposition
+		
+	}
+	return @names;
+	
+}
+
+
+sub partmatch {
+	my $mrnatarget = $_[0];
+	my @seqnames = @{$_[1]};
+	my %seqhash = %{$_[2]};
+	my $seedseq = substr $mrnatarget, 13, 8;
+	
+
+	#$opt_n && $opt_n >= 2
+	
+	my @names;
+	for my $seqone (@seqnames) {#ncoreposition
+	my $genomeseq = $seqhash{$seqone};
+	LINE: while ($genomeseq =~ m/$seedseq/g) {
+			my $beginposindex = (length $`) - 1;
+			my $matchregion = substr $genomeseq, $beginposindex-12, 21;
+			my $matchc = &acgtmatch($matchregion, $mrnatarget);
+			if ($matchc >= 18) {
+				push @names, $seqone;
+				last LINE;
+			}
+		}
+	}
+	return @names;
+	
+	
+}
+
+sub acgtmatch {
+	my $seqa = $_[0];
+	my $seqb = $_[1];
+	my $match = ($seqa ^ $seqb) =~ tr/\0//;
+	return $match;
+}
+
+sub targetit {
+		return qw(1) if $opt_F;
+		my $mirnacandidate = $_[0];
+		$mirnacandidate =~ tr/a-z/A-Z/;
+		$mirnacandidate =~ s/U/T/g;
+
+		my @mirnas = &eightmermatch($mirnacandidate, \@refkeysmir, \%refseqsmir);
+		my @wholes = &wholematch($mirnacandidate, \@refkeys, \%refseqs);
+		my @parts = &partmatch($mirnacandidate, \@refkeys, \%refseqs);
+		my $wholescore = 0;
+		my $partscore = 0;
+		my $mirscore = 0;
+		if ($opt_w) {
+			my $lenwholes = 0;
+			my $lenparts = 0;
+			for my $nameone (@wholes) {
+				$wholescore += $adjustfactors{$nameone};
+			}
+			for my $nameone (@parts) {
+				$partscore += $adjustfactors{$nameone};
+			}
+			for my $nameone (@mirnas) {
+				$mirscore += $adjustfactors{$nameone};
+			}
+		}else{
+			$wholescore = scalar @wholes;
+			$partscore = scalar @parts;
+			$mirscore = scalar @mirnas;
+		}
+		my $sense = 1;
+		if ($wholescore >= $opt_P) {
+			$sense = 0;
+		}
+		if ($partscore >= $opt_A) {
+			$sense = 0;
+		}
+		if ($mirscore >= $opt_M) {
+			$sense = 0;
+		}
+		my @out = ($sense, $wholescore, $partscore, $mirscore);
+		return(@out);
+}

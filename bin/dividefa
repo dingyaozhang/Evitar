@@ -1,0 +1,127 @@
+use strict;
+use warnings;
+
+use Getopt::Std;
+my $temppath = '.temptempsi';
+use vars qw($opt_i $opt_r $opt_o $opt_p $opt_t $opt_s $opt_n);
+getopts('i:r:o:p:t:sn:');
+
+
+use threads;
+use threads::shared;
+use POSIX qw(floor);
+#perl code/dividefa -i try.fa -r cov19ref.fa -s -t 123 -o 1234
+
+if ($opt_t) {
+	$opt_t =~ s/^\.\///;
+	$opt_t =~ s/\/$//;
+	$temppath = $opt_t;
+}
+if ($opt_o) {
+	$opt_o =~ s/^\.\///;
+	$opt_o =~ s/\/$//;
+}else{
+	$opt_o = '.temptempsi';
+}
+
+my $scriptpath;
+unless ($opt_p) {
+	$scriptpath = $0;
+	if ($scriptpath =~ s/dividefa$//) {
+		$scriptpath = $scriptpath;
+	}else{
+		die "wrong program name $scriptpath\n";
+	}
+}
+
+
+my $ref;
+open REF, "$opt_r" or die;
+{
+	local $/ = undef;
+	$ref = <REF>;
+	$ref =~ s/\n$//;
+}
+if ($ref =~ m/>.+>/) {
+	die "only one sequence in reference fasta.\n";
+}
+
+close REF;
+
+
+local $/ = '>';
+open IN, "$opt_i" or die;
+my $line1 = <IN>;
+
+unless (-e $temppath) {
+    `mkdir $temppath`;
+}
+unless (-e $opt_o) {
+	`mkdir $opt_o`;
+}
+
+my @outfiles;
+my @outfiles2;
+my $tosilent = "$temppath/tosilent.txt";
+
+my @refincommands;
+while (<IN>) {
+	my $tempfile = "$temppath/"."$.".".fa";
+	my $outfile = "$opt_o/$.".".out";
+	open OUT, '>', "$tempfile" or die;
+	chomp;
+	print OUT "$ref\n";
+	print OUT ">$_\n";
+	close OUT;
+	#system "${scriptpath}muscle3.8.31_i86linux64 -in $tempfile -out $outfile &> $tosilent";
+	my $systemcommand = "${scriptpath}muscle3.8.31_i86linux64 -in $tempfile -out $outfile &> $tosilent";
+	push @refincommands, $systemcommand;
+	push @outfiles, "$tempfile";
+	push @outfiles2, "$.".".out";
+}
+
+
+close IN;
+local $/ = "\n";
+
+
+if ($opt_n) {
+	my $commandsum = scalar @refincommands;
+	my $oneblocknum = floor($commandsum / $opt_n) + 1;
+	my @chunks;
+	push @chunks, [splice(@refincommands, 0, $oneblocknum)] while @refincommands;
+	my @threads;
+	foreach (@chunks) {
+	   push @threads, threads->new(\&justrun, $_);
+	}
+	
+	foreach (@threads) {
+	   my $out1 = $_->join();
+	}
+}else{
+	foreach (@refincommands) {
+		`$_`;
+	}
+}
+
+unlink $tosilent;
+
+unless ($opt_s) {
+	foreach my $file (@outfiles) {
+		unlink $file or print "Could not unlink $file: $!";
+	}
+	rmdir "$temppath" if $opt_o ne $temppath;
+}
+
+open OUT, '>', "$opt_o/outfiles.txt" or die;
+foreach my $file (@outfiles2) {
+	print OUT "$file\n";
+}
+close OUT;
+
+sub justrun {
+	my @arrayarr = @{$_[0]};
+	for my $var (@arrayarr) {
+		`$var`;
+	}
+}

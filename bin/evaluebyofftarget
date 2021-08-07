@@ -1,0 +1,160 @@
+use strict;
+use warnings;
+
+
+use Getopt::Std;
+use vars qw($opt_i $opt_o $opt_m $opt_t);
+our $opt_p = 1;
+our $opt_u = 20;
+our $opt_w = 20000;
+getopts('i:o:m:t:p:u:w:');
+#perl code/evaluebyofftarget.pl -i ts2.txt -m off1.txt -t off22.txt -o trytest.txt
+use List::Util qw(max sum);
+
+
+my @partmatch;
+my @wholematch;
+my @mirmatch;
+open MATCH, "$opt_t" or die;
+while (<MATCH>) {
+	chomp;
+	my @array = split(/\t/, $_);
+	push @wholematch, $array[3];
+	push @partmatch, $array[4];
+}
+close MATCH;
+open MIR, "$opt_m" or die;
+while (<MIR>) {
+	chomp;
+	my @array = split(/\t/, $_);
+	push @mirmatch, $array[3];
+}
+close MIR;
+
+#die scalar @mirmatch;
+
+open IN, "$opt_i" or die;
+open OUT, '>', "$opt_o" or die;
+
+my $line1 = <IN>;
+chomp($line1);
+my @line1 = split(/\t/, $line1);
+my $line11 = shift(@line1);
+my $line12 = shift(@line1);
+my $line13 = shift(@line1);
+my $line14 = shift(@line1);
+my $line15 = shift(@line1);
+my $line16 = shift(@line1);
+my $line1out = join("\t", @line1);
+print OUT "$line11\t$line12\t$line13\t$line14\t$line15\t$line16\tWholetarget_Score\tParttarget_Score\tMIRtarget_Score\t$line1out\n";
+
+
+my @outputlines;
+my $indexi = 0;
+while (<IN>) {
+	chomp;
+	my @array = split(/\t/, $_);
+	my $scorebefore = $array[4];
+	my $offtargetscore = 1;
+	my $partmatchscore = $partmatch[$indexi];
+	my $wholematchscore = $wholematch[$indexi];
+	my $mirmatchscore = $mirmatch[$indexi];
+	#print "$indexi\n";
+	$indexi += 1;
+	if ($opt_p >= 0) {
+		if ($wholematchscore > $opt_p) {
+			next;
+		}else{
+			my $tempscore = ($opt_p-$wholematchscore)/($opt_p);
+			$offtargetscore = $offtargetscore*$tempscore;
+		}
+	}else{
+		my $tempscore = (1-$wholematchscore)/(1);
+		$offtargetscore = $offtargetscore*$tempscore;
+	}
+
+	
+	if ($opt_u >= 0) {
+		if ($partmatchscore > $opt_u) {
+			next;
+		}else{
+			my $tempscore = ($opt_u-$partmatchscore)/($opt_u);
+			$offtargetscore = $offtargetscore*$tempscore;
+		}
+	}else{
+		my $tempscore = (20-$partmatchscore)/(20);
+		$offtargetscore = $offtargetscore*$tempscore;
+	}
+
+
+	if ($opt_w >= 0) {
+		if ($mirmatchscore > $opt_w) {
+			next;
+		}else{
+			my $tempscore = ($opt_w-$mirmatchscore)/($opt_w);
+			$offtargetscore = $offtargetscore*$tempscore;
+		}
+	}else{
+		my $tempscore = (20000-$mirmatchscore)/(20000);
+		$offtargetscore = $offtargetscore*$tempscore;
+	}
+
+
+	my @outarray = @array;
+	shift(@outarray);
+	shift(@outarray);
+	shift(@outarray);
+	shift(@outarray);
+	shift(@outarray);
+	shift(@outarray);
+	my $outarray = join("\t", @outarray);
+	next if $offtargetscore == 0;
+	push @outputlines, "$array[0]\t$array[1]\t$array[2]\t$offtargetscore\t$array[4]\t$array[5]\t$wholematchscore\t$partmatchscore\t$mirmatchscore\t$outarray";
+	#print OUT "$array[0]\t$array[1]\t$array[2]\t$scorenew\t$scroes\t$array[5]\t$wholematchscore\t$partmatchscore\t$mirmatchscore\t$outarray\n";
+}
+close IN;
+
+
+@outputlines = sort { (split(/\t/, $b))[3] <=> (split(/\t/, $a))[3] } @outputlines;
+
+
+my @output2;
+my $realrank = 0;
+my $scorebefore = (split(/\t/, $outputlines[0]))[3]+100;
+for my $outputvar (@outputlines) {
+	my @linevar = split(/\t/, $outputvar);
+	my $one = shift(@linevar);
+	my $two = shift(@linevar);
+	my $three = shift(@linevar);
+	my $scorenew = shift(@linevar);
+	if ($scorebefore > $scorenew) {
+		$realrank += 1;
+		$scorebefore = $scorenew;
+	}elsif ($scorebefore == $scorenew) {
+		$realrank = $realrank;
+	}else{
+		die "wrong rank\n";
+	}
+	my $scores = shift(@linevar);
+	my $ranks = shift(@linevar);
+	my $outarray = join("\t", @linevar);
+	#print OUT "$one\t$two\t$three\t$scorenew\t$realrank\t$scores|$scorenew\t$ranks|$realrank\t$outarray\n";
+	push @output2, "$one\t$two\t$three\t$realrank\t$scorenew|$scores\t$realrank|$ranks\t$outarray";
+}
+undef @outputlines;
+
+LINE: for my $outputvar (@output2) {
+	#my @linevar = split(/\t/, $outputvar);
+	#my @ranks = split(/\|/, $linevar[5]);
+	#$linevar[3] = max(@ranks);
+	#my $outarray = join("\t", @linevar);
+	#print OUT "$outarray\n";
+	print OUT "$outputvar\n";
+}
+close OUT;
+#print scalar @partmatch;
+#print $indexi;
+die "wrong partmatch $indexi\n" if scalar @partmatch != $indexi;
+die "wrong wholematch\n" if scalar @wholematch != $indexi;
+die "wrong mirmatch\n" if scalar @mirmatch != $indexi;
+

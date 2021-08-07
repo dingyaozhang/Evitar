@@ -1,0 +1,254 @@
+use strict;
+use warnings;
+
+use threads;
+use threads::shared;
+use POSIX qw(floor);
+
+use Getopt::Std;
+use vars qw($opt_i $opt_o $opt_r $opt_m $opt_c $opt_n $opt_w);
+getopts('i:o:r:mcn:w:');
+
+my %geneweight;
+if ($opt_w) {
+	open WEIGHT, "$opt_w" or die;
+	my $wl1 = <WEIGHT>;
+	while (<WEIGHT>) {
+		chomp;
+		my @array = split(/\t/, $_);
+		next if $array[2] == 0;
+		my $purename = $array[0];
+		#if ($purename =~ m/(ENSG[^.]+)\./) {
+		#	$purename = $1;
+		#}else{
+		#	die "wrong ref name\n";
+		#}
+		$geneweight{$purename} = $array[2];
+	}
+	close WEIGHT;
+}
+
+
+my %refseqs;
+local $/ = ">";
+open REF, "$opt_r" or die;
+my $fastanull = <REF>;
+
+
+
+my %adjustfactors;
+while (<REF>) {
+	chomp;
+	next if length $_ == 0;
+	my @array = split(/\n/, $_);
+	my $name = shift(@array);
+	my $seq = join("", @array);
+	my $purename = $name;
+	#if ($purename =~ m/(ENSG[^.]+)\./) {
+	#	$purename = $1;
+	#}else{
+	#	die "wrong ref name\n";
+	#}
+	if ($opt_w) {
+		if (exists($geneweight{$purename})) {
+			$adjustfactors{$purename} = $geneweight{$purename};
+		}else{
+			next;
+		}
+	}
+	$seq =~ tr/a-z/A-Z/;
+	$seq =~ s/U/T/g;
+	if ($opt_c) {
+		die "no ACGT base\t$.\n" if $seq =~ m/[^ACGT]/;
+	}
+	if (exists($refseqs{$purename})) {
+		$refseqs{$purename} = "$seq\t\t\t\t\t\t\t\t\t\t$refseqs{$purename}";
+	}else{
+		$refseqs{$purename} = $seq;
+	}
+}
+close REF;
+
+my @refkeys = sort {$a cmp $b} keys(%refseqs);
+
+local $/ = "\n";
+open IN, "$opt_i" or die;
+open OUT, '>', "$opt_o" or die;
+my $line1 = <IN>;
+
+my @targetsin;
+while (<IN>) {
+	chomp;
+	push @targetsin, $_;
+}
+close IN;
+my $targetsnum = scalar @targetsin;
+my $oneblocknum = floor($targetsnum / $opt_n) + 1;
+my @chunks;
+push @chunks, [splice(@targetsin, 0, $oneblocknum)] while @targetsin;
+
+
+
+my @threads;
+foreach (@chunks) {
+   push @threads, threads->new(\&dealtarget, $_);
+}
+my @finalouts;
+foreach (@threads) {
+   my $out1 = $_->join();
+   push @finalouts, $out1;
+}
+
+for my $var1 (@finalouts) {
+	my @tempout = @{$var1};
+	for my $var2 (@tempout) {
+		print OUT "$var2";
+	}
+}
+
+
+close OUT;
+
+
+sub dealtarget {
+	my @out;
+	my @array00 = @{$_[0]};
+	for my $targetone (@array00) {
+		my @array = split(/\t/, $targetone);
+		my $mirnacandidate = $array[1];
+		$mirnacandidate =~ tr/a-z/A-Z/;
+		$mirnacandidate =~ s/U/T/g;
+		die "no ACGT base\t$mirnacandidate\n" if $mirnacandidate =~ m/[^ACGT]/;
+		if ($. == 2) {
+			die "wrong length siRNA design needs to 21nt long" if length $mirnacandidate != 21;
+		}
+		if ($opt_m) {
+			my @mirnas = &eightmermatch($mirnacandidate, \@refkeys, \%refseqs);
+			if ($opt_w) {
+				my $lenmirnas = 0;
+				for my $nameone (@mirnas) {
+					$lenmirnas += $adjustfactors{$nameone};
+				}
+				my $lenmirnas2 = scalar @mirnas;
+				push @out, "$array[0]\t$array[1]\t$array[2]\t$lenmirnas\t$lenmirnas2\n";
+			}else{
+				my $lenmirnas = scalar @mirnas;
+				push @out, "$array[0]\t$array[1]\t$array[2]\t$lenmirnas\n";
+			}
+		}else{
+			my @wholes = &wholematch($mirnacandidate, \@refkeys, \%refseqs);
+			my @parts = &partmatch($mirnacandidate, \@refkeys, \%refseqs);
+			
+			if ($opt_w) {
+				my $lenwholes = 0;
+				my $lenparts = 0;
+				my $lenwholes2 = scalar @wholes;
+				my $lenparts2 = scalar @parts;
+				for my $nameone (@wholes) {
+					$lenwholes += $adjustfactors{$nameone};
+				}
+				for my $nameone (@parts) {
+					$lenparts += $adjustfactors{$nameone};
+				}
+				push @out, "$array[0]\t$array[1]\t$array[2]\t$lenwholes\t$lenparts\t$lenwholes2\t$lenparts2\n";
+			}else{
+				my $lenwholes = scalar @wholes;
+				my $lenparts = scalar @parts;
+				push @out, "$array[0]\t$array[1]\t$array[2]\t$lenwholes\t$lenparts\n";
+			}
+			
+		}
+	}
+	return \@out;
+}
+
+#21nt
+#19nt
+#8mer
+#14 15 16 17
+#18 19 20 21
+sub eightmermatch {
+	my $mrnatarget = $_[0];
+	my @seqnames = @{$_[1]};
+	my %seqhash = %{$_[2]};
+	my $seedseq = substr $mrnatarget, 13, 8;
+	my @names;
+	for my $seqone (@seqnames) {
+		my $genomeseq = $seqhash{$seqone};
+		if ($genomeseq =~ m/$seedseq/) {
+			#my $beginpos = (length $`) - 1;
+			push @names, $seqone;
+		}
+	}
+	return @names;
+}
+
+sub wholematch {
+	my $mrnatarget = $_[0];
+	my @seqnames = @{$_[1]};
+	my %seqhash = %{$_[2]};
+	my @names;
+	for my $seqone (@seqnames) {
+		my $genomeseq = $seqhash{$seqone};
+		if ($genomeseq =~ m/$mrnatarget/) {
+			push @names, $seqone;
+			#print "whole\t$seqone\t$genomeseq\n";
+		}
+	}
+	return @names;
+}
+
+#sub partmatch {
+#	my $mrnatarget = $_[0];
+#	my @seqnames = @{$_[1]};
+#	my %seqhash = %{$_[2]};
+#	my $seedseq = substr $mrnatarget, 13, 8;
+#	my @names;
+#	for my $seqone (@seqnames) {
+#		my $genomeseq = $seqhash{$seqone};
+#		LINE: while ($genomeseq =~ m/$seedseq/g) {
+#			my $beginposindex = (length $`) - 1;
+#			my $matchregion = substr $genomeseq, $beginposindex-12, 21;
+#			my $matchc = &acgtmatch($matchregion, $mrnatarget);
+#			#print "$matchregion\n$seedseq\n";
+#			if ($matchc >= 18) {
+#				push @names, $seqone;
+#				last LINE;
+#			}
+#		}
+#	}
+#	return @names;
+#	
+#}
+
+sub partmatch {
+	my $mrnatarget = $_[0];
+	my @seqnames = @{$_[1]};
+	my %seqhash = %{$_[2]};
+	my $seedseq = substr $mrnatarget, 13, 8;
+	my @names;
+	#my $mrnatarget2 = substr $mrnatarget, 2, 19;
+	for my $seqone (@seqnames) {
+		my $genomeseq = $seqhash{$seqone};
+		LINE: while ($genomeseq =~ m/$seedseq/g) {
+			my $beginposindex = (length $`) - 1;
+			my $matchregion = substr $genomeseq, $beginposindex-12, 21;
+			#my $matchregion = substr $genomeseq, $beginposindex-10, 19;
+			my $matchc = &acgtmatch($matchregion, $mrnatarget);
+			#print "$matchregion\n$seedseq\n";
+			if ($matchc >= 18) {
+				push @names, $seqone;
+				last LINE;
+			}
+		}
+	}
+	return @names;
+	
+}
+
+sub acgtmatch {
+	my $seqa = $_[0];
+	my $seqb = $_[1];
+	my $match = ($seqa ^ $seqb) =~ tr/\0//;
+	return $match;
+}
