@@ -1,7 +1,7 @@
 # Evitar
 Evitar incorporates considerations on siRNA properties, target RNA structure, off-target effects and genetic variations in viral genomes and designs multiple siRNAs to target viral genome; Evitar also supports a second mode for pre-designing siRNAs against emerging viruses based on existing viral sequences.
 
-##Quick Start
+## Quick Start
 Basic function to design antiviral siRNAs (Transcript_3primer_utr_sequence.fa and transcriptome_sequence.fa could be gotten by running GenomeData/GenomeData.sh.)
 ```
 perl bin/Evitar.pl --input virus_reference_genome.fa --output designed_siRNAs.txt --strains virus_strains_genomes.fa --offtarget --p3utr transcript_3primer_utr_sequence.fa --transcriptome transcriptome_sequence.fa --weight weighted_of_gene.txt
