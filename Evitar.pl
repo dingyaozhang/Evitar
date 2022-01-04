@@ -3,10 +3,6 @@ use strict;
 use warnings;
 
 
-#";
-#perl code/0offtargetncore.pl -i tsv.txt -o seesee2.txt -r data/try8.fa -n 2
-#perl code/0offtargetncore.pl -i tsv.txt -o seesee1.txt -r data/try8.fa
-
 use Getopt::Long;
 use File::Copy;
 #my ($verbose, $seq);
@@ -50,7 +46,7 @@ $tempfile =~ s/\/$//;
 
 my $scriptsfolder = $0;
 if ($scriptsfolder =~ s/Evitar\.pl$//) {
-	$scriptsfolder = $scriptsfolder;
+	$scriptsfolder = $scriptsfolder.'bin/';
 }else{
 	die "wrong program name\n";
 }
@@ -346,7 +342,10 @@ if ($mode eq 'predsi') {
 		close OUTPUT;
 		close INPUT;
 	}
-	
+	unless ($sumtype) {
+		print "There is no choice of algorithm for summarization.\nThe SGAR algorithm is selected.\n";
+		$sumtype = 'SGAR';
+	}
 	if ($sumtype && $sumtype eq 'SGAR') {
 		my $addcommand = '';
 		if ($offtarget||$offtargetperfect) {
@@ -406,8 +405,7 @@ if ($mode eq 'predsi') {
 		unlink "$tempfile/count.unsort";
 		move("$tempfile/count.sort",$output);
 		rmdir "$tempfile";
-	}else{
-		die "There is no choice of algorithm.\nThe default algorithm is selected.\n";
+	}elsif($sumtype && $sumtype eq "depreciatedgreedy") {
 		my $addcommand = '';
 		if ($offtarget||$offtargetperfect) {
 			$addcommand .= "-r $tranome -m $p3utr ";
@@ -426,7 +424,10 @@ if ($mode eq 'predsi') {
 		}else{
 			$addcommand .= "-F ";
 		}
-		run("perl ${scriptsfolder}weightedgreedyncore -i $tempfile/count.unsort -o $tempfile/count.sort -c $repeatnum -l $limitnumber -n $ncores $addcommand");
+		if ($ncores) {
+			$addcommand .= " -n $ncores ";
+		}
+		run("perl ${scriptsfolder}weightedgreedyncore -i $tempfile/count.unsort -o $tempfile/count.sort -c $repeatnum -l $limitnumber $addcommand");
 		unlink "$tempfile/count.unsort";
 		move("$tempfile/count.sort",$output);
 		rmdir "$tempfile";
