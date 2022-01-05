@@ -14,7 +14,7 @@ my $predict = 'predsi';
 my $verifytype = 'perfect';
 my $limitnumber = 50;
 my $repeatnum = 2;
-my ($offtarget, $offtargetperfect, $tranome, $input, $p3utr, $strains, $ncores, 
+my ($offtarget, $offtargetperfect, $tranome, $input, $p3utr, $strains, $ncores, $mutationrate, $offtargetwholematch, $offtargetpartmatch, $offtargetmirna,
  $RNAplfold, $output, $parameterRNAxs, $weight, $pmcuff, $umcuff, $mircuff, $range, $sumtype, $allowlist, $banlist);
 
 GetOptions ("mode=s" => \$mode,    
@@ -39,6 +39,10 @@ GetOptions ("mode=s" => \$mode,
               "range=i" => \$range,
               "limitnum=i" => \$limitnumber,
               "repeatnum=f" => \$repeatnum,
+              "mutationrate=s" => \$mutationrate,
+              "offtargetwholematch=s" => \$offtargetwholematch,
+              "offtargetpartmatch=s" => \$offtargetpartmatch,
+              "offtargetmirna=s" => \$offtargetmirna,
 			  "ncores=i" => \$ncores)
 or die("Error in command line arguments\n");
 
@@ -91,8 +95,12 @@ if ($mode eq 'predsi') {
 			}else{
 				run("perl ${scriptsfolder}dividefa -i $strains -r $input -o $tempfile -t $tempfile");
 			}			
-			run("perl ${scriptsfolder}mutforsiRNA -a $tempfile -o $tempfile/anno.temp");
-			run("perl ${scriptsfolder}select_siRNA -i $output -r $tempfile/anno.temp -o $tempfile/outtemp.out");
+			run("perl ${scriptsfolder}mutforsiRNA -a $tempfile -r $input -o $tempfile/anno.temp");
+			if ($mutationrate) {
+				run("perl ${scriptsfolder}select_siRNA -i $output -r $tempfile/anno.temp -o $tempfile/outtemp.out -m $mutationrate");
+			}else{
+				run("perl ${scriptsfolder}select_siRNA -i $output -r $tempfile/anno.temp -o $tempfile/outtemp.out");
+			}
 			my @tempin;
 			open TEMPIN, "$tempfile/outfiles.txt" or die;
 			while (<TEMPIN>) {
@@ -109,8 +117,12 @@ if ($mode eq 'predsi') {
 			unless (-e $tempfile) {
 				run("mkdir $tempfile");
 			}
-			run("perl ${scriptsfolder}mutforsiRNA -a $strains -o $tempfile/anno.temp");
-			run("perl ${scriptsfolder}select_siRNA -i $output -r $tempfile/anno.temp -o $tempfile/outtemp.out");
+			run("perl ${scriptsfolder}mutforsiRNA -a $strains -r $input -o $tempfile/anno.temp");
+			if ($mutationrate) {
+				run("perl ${scriptsfolder}select_siRNA -i $output -r $tempfile/anno.temp -o $tempfile/outtemp.out -m $mutationrate");
+			}else{
+				run("perl ${scriptsfolder}select_siRNA -i $output -r $tempfile/anno.temp -o $tempfile/outtemp.out");
+			}
 			move("$tempfile/outtemp.out", $output);
 			unlink "$tempfile/anno.temp";
 			rmdir "$tempfile";
@@ -124,6 +136,15 @@ if ($mode eq 'predsi') {
 		my $addcommand = '';
 		if ($weight) {
 			$addcommand .= " -w $weight ";
+		}
+		if ($pmcuff) {
+				$addcommand .= "-p $pmcuff ";
+		}
+		if ($umcuff) {
+				$addcommand .= "-u $umcuff ";
+		}
+		if ($mircuff) {
+			$addcommand .= "-w $mircuff ";
 		}
 		if ($ncores) {
 			run("perl ${scriptsfolder}offtargetncore -i $output -o $tempfile/offmirtemp.txt -r $p3utr -n $ncores -m $addcommand");
@@ -257,7 +278,6 @@ if ($mode eq 'predsi') {
 		}
 	}elsif ($predict eq 'rnaxs') {
 	foreach my $file (@outrelatives) {
-		#print "$addcommand -s $file -o ${file}.out -z $tempfile/.temptempsi$filei\n";
 		push @outrelativescommands, "$addcommand -s $file -o ${file}.out -z $tempfile/.temptempsi$filei";
 		$filei += 1;
 	}
@@ -296,7 +316,7 @@ if ($mode eq 'predsi') {
 	close OUTPUT;
 	$totali += 1;
 	
-	###
+	
 	for my $seqhashvar (keys(%seqhash)) {
 		my @seqhasharr = split(/\|/, $seqhash{$seqhashvar});
 		my %temphash;
@@ -306,7 +326,7 @@ if ($mode eq 'predsi') {
 		@seqhasharr = sort {$a <=> $b} keys %temphash;
 		$seqhash{$seqhashvar} = join("|", @seqhasharr);
 	}
-	#####
+	
 
 	foreach my $file (@outrelatives) {
 		unlink $file or print "Could not unlink $file: $!";
@@ -446,17 +466,42 @@ if ($mode eq 'predsi') {
 
 sub usage{
 die
-' "mode=s" => \$mode,    # numeric
-  "predict=s"   => \$predict,     
-  "strains=s"  => \$strains,
-  "offtarget"  => \$offtarget,
-  "p3utr=s"  => \$p3utr,
-  "RNAplfold=s"  => \$RNAplfold,
-  "transcriptome=s"  => \$tranome,
-  "temp=s"  => \$tempfile,
-  "input=s"  => \$input,  # flag
-  "output=s"  => \$output,
-  "ncores=i" => \$ncores)
+' Usage: perl Evitar.pl --input infile --output outfile [OPTION...]
+  
+  infile:
+    the input file
+  outfile:
+    the output file
+  ncores:
+    the threads used in the multithread mode
+  strains:
+    viurs strains file for consideration on 
+  offtarget:
+    Include  the evaluation on siRNA offtarget    effect
+  p3utr:
+    the fasta file of 3\'UTR regions of transcriptome
+  tranome:
+    the fasta file of transcriptome
+  weight:
+    the list including gene weighting information for evaluation of offtarget effect
+  pmcuff:
+    the cutoff standard for evaluating offtarget effects as siRNA perfect match.
+  umcuff:
+    the cutoff standard for evaluating offtarget effects as siRNA unperfect match.
+  mircuff:
+    the cutoff standard for evaluating offtarget effects as miRNA match.
+  sumtype:
+    Select the proper method to pre-design siRNAs (SGAR/greedy(GAR))
+  limitnum:
+    the limitation of lines of output file in pre-design mode
+  repeatnum:
+    the penalty factor for pre-design mode
+  allow:
+    List of siRNAs which are verified by the experiments
+  ban:
+    List of siRNAs which are excluded by the experiments
+  temp: 
+    the path for temporary fold for the calculation
 ';
 }
 	

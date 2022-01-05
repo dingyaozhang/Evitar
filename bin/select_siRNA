@@ -3,10 +3,15 @@ use warnings;
 
 
 use Getopt::Std;
-use vars qw($opt_i $opt_o $opt_r);
-getopts('i:o:r:');
+use vars qw($opt_i $opt_o $opt_r $opt_m);
+getopts('i:o:r:m:');
 
 use List::Util qw(max sum);
+
+#mutation rate requirement
+unless ($opt_m) {
+	$opt_m = 0.05;
+}
 
 my %ref;
 open REF, "$opt_r" or die;
@@ -79,11 +84,11 @@ while (<IN>) {
 	my $useoverallnumber = $allsamplenumber - (scalar @narray);
 	my $evolutionratio = (scalar @realmut) / $useoverallnumber;
 	my $scorenew;
-	if ($evolutionratio >= 0.05) {
+	if ($evolutionratio >= $opt_m) {
 		next;
 		#$scorenew = 0;
 	}else{
-		$scorenew = 1-($evolutionratio / 0.05);
+		$scorenew = 1-($evolutionratio / $opt_m);
 	}
 	my @outarray = @array;
 	shift(@outarray);
@@ -97,7 +102,9 @@ while (<IN>) {
 	#print OUT "$array[0]\t$array[1]\t$array[2]\t$scorenew\t$evolutionratio\t$outarray\n";
 }
 close IN;
-
+if (scalar @outputlines < 1) {
+	die "Error: no siRNA pass mutation rate requirement."
+}
 
 @outputlines = sort { (split(/\t/, $b))[3] <=> (split(/\t/, $a))[3] } @outputlines;
 my @output2;

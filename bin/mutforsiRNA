@@ -2,8 +2,8 @@ use strict;
 use warnings;
 
 use Getopt::Std;
-use vars qw($opt_o $opt_a);
-getopts('o:a:');
+use vars qw($opt_o $opt_r $opt_a);
+getopts('o:r:a:');
 
 #open ERR2, '>', "ERR2.txt" or die;
 #perl analyze_align_out.pl -o aa2
@@ -21,12 +21,21 @@ while (<ANNO>) {
 }
 close ANNO;
 
+my $output_ref = '';
+open TEMPIN, "$opt_r" or die;
+my $uselessline1 = <TEMPIN>;
+while (<TEMPIN>) {
+	chomp;
+	s/\r//;
+	$output_ref = $output_ref."$_";
+}
+close TEMPIN;
+
 local $/ = '>';
 
 
-
 my @totalrecord = ();
-my $output_ref = '';
+
 my %record;
 my %record2;
 my %filerecord;
@@ -57,10 +66,6 @@ for my $var (@files) {
 	$ref =~ tr/ACGTN-/N/c;
 	$new =~ tr/ACGTN-/N/c;
 
-	if ($output_ref eq '') {
-		$output_ref = $ref;
-		
-	}
 
 	my $purenew = $new;
 	$purenew =~ s/-//g;
