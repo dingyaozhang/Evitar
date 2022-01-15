@@ -1,13 +1,13 @@
 
 > # Evitar
 >
-> Evitar pre-designs siRNAs against future viruses based on existing viral sequences. It also supports a mode for designing multiple siRNAs to target input viral genomes. 
+> Evitar (Emerging-Virus-Targeting RNA) is a program for (1) pre-designing siRNAs/Cas13a guide RNAs against future viruses based on existing viral sequences, and (2) designing siRNAs/Cas13a guide RNAs against a single virus based on sequences of multiple strains of this virus.
 >
-> Perl5 and Linux are required. Some functions also required R (>= 3.4). The software should run in Linux command line.
+> Perl5 and Linux are required. Some functions also required R (version 3.4 or later). The software should be run using the Linux command line environment.
 >
 > ## Installation
 >
-> The software can be downloaded from Github using:
+> The software can be downloaded from Github using the following commands:
 >
 > ```
 > git clone https://github.com/dingyaozhang/Evitar.git
@@ -18,73 +18,86 @@
 >
 > After installation and enter into Evitar folder, Evitar could be directly used. The data in ***test/*** folder could be used to test whether the installation is successful. 
 >
-> ***The <font color = red>bin/</font> folder is required for successful execution of the program, don't change it unless you want to modify the software.***
+> ***The <font color = red>bin/</font> folder is required for successful execution of the program. Please do not change it unless you want to modify the software.***
 >
 > To design siRNAs targeting **future** viruses: 
 >
 > ```
-> perl Evitar.pl --mode predesign --input test/exist_viruses.fa  --output test/future_siRNAs.txt
+> perl Evitar.pl --mode predesign --input test/exist_viruses.fa --output test/future_siRNAs.txt
 > ```
 >
-> To design siRNAs targeting **input** viruses: 
+> To design siRNAs targeting an **existing** virus: 
 >
 > ```
 > perl Evitar.pl --input test/genome.fa --strains test/strains.fa --output test/siRNAs.txt
 > ```
 >
-> ## Usage
+> ## Usage, Options and Switches
 >
 > ```
 > Usage: perl Evitar.pl --input infile --output outfile [OPTION...]
->   
->   infile:
->     the input file
->   outfile:
->     the output file
->   ncores:
->     the threads used in the multithread mode
->   strains:
->     viurs strains file for consideration on 
->   offtarget:
->     Include  the evaluation on siRNA offtarget    effect
->   p3utr:
->     the fasta file of 3'UTR regions of transcriptome
->   tranome:
->     the fasta file of transcriptome
->   weight:
->     the list including gene weighting information for evaluation of offtarget effect
->   pmcuff:
->     the cutoff standard for evaluating offtarget effects as siRNA perfect match.
->   umcuff:
->     the cutoff standard for evaluating offtarget effects as siRNA unperfect match.
->   mircuff:
->     the cutoff standard for evaluating offtarget effects as miRNA match.
->   sumtype:
->     Select the proper method to pre-design siRNAs (SGAR/greedy(GAR))
->   limitnum:
->     the limitation of lines of output file in pre-design mode
->   repeatnum:
->     the penalty factor for pre-design mode
->   allow:
->     List of siRNAs which are verified by the experiments
->   ban:
->     List of siRNAs which are excluded by the experiments
->   temp: 
->     the path for temporary fold for the calculation
+> 
+> infile:
+>      The name of input file. For the mode of designing against future viruses, the input file is a fasta file containing sequences of existing viruses. For the mode of designing against an existing virus, the input file is a fasta file that contains a single sequence (such as the reference genome of the virus).
+> outfile:
+>     The name of output file. Output will be in text file format. The output fields are described in the first line of the file. 
+>     
+>  Options (need to include values after the option switches):
+>    --predict:
+>      A text string defining whether to design siRNAs or Cas13a gRNAs, and for siRNAs, which designing algorithm to be used. Allowed values are “predsi” for using the GPP-Portal-like siRNA-designing algorithm, or “rnaxs” for using the RNAxs siRNA-designing algorithm, or “CRISPR” for designing Cas13a gRNA. 
+>    --ncores:
+>      The number of threads used in the multithread mode. Default is 1.
+>    --strains:
+>      A fasta file containing sequences of viral strains for a virus of interest(used for the mode of designing against an existing virus)  
+>    --p3utr:
+>      A fasta file containing the 3'UTR regions of the transcriptome
+>    --tranome:
+>      A fasta file containing the sequences of the transcriptome
+>    --weight:
+>      A text file used to evaluate the off-target effect of siRNAs. The file contains three columns with a single header line. First column is for ENSEMBL Gene ID. Second column contains Gene Symbol. Third column contains a numerical value for the weight of the corresponding gene. Each row contains information for one gene.
+>    --pmcuff:
+>      An integer value defining the maximum cutoff when evaluating off-target effects of siRNAs on perfect match with the transcriptome. Any siRNAs with the number of perfect matches larger or equal to this cutoff will be removed from consideration. Default is 1.
+>    --umcuff:
+>      A numerical value defining the maximum cutoff when evaluating off-target effects of siRNAs on imperfect match with the transcriptome. Imperfect match are those with extensive matches but not complete match between siRNA and a transcript. An off-target score is calculated based on this cutoff. Default: 20.
+>    --mircuff:
+>      A numerical value defining the maximum cutoff when evaluating off-target effects of siRNAs on miRNA-like off-target effects. miRNA-like off-target effects are evaluated based on the match between the seed sequence of the siRNA and a transcript. An off-target score is calculated based on this cutoff. Default: 20000.
+>    --sumtype:
+>      A text string input of either “SGAR” or “greedy”. SGAR means running the SGAR algorithm when selecting siRNAs into a collection. Greedy means running the GAR algorithm when selecting siRNAs into a collection. The default is SGAR. This option is only used when running in the mode of predesigning against future viruses.
+>    --limitnum:
+>      An integer value defining the number of siRNAs/Cas13a gRNAs to be output into a collection. Default is 30. This option is only used when running in the mode of predesigning against future viruses.
+>    --repeatnum:
+>      An integer value defining the Multi-siRNA parameter, which is used to increase the robustness of identifying more than one siRNA/Cas13 gRNA in a collection against a future virus. Default is 3. This option is only used when running in the mode of predesigning against future viruses. Note that to run Evitar with the conventional greedy algorithm, set –-repeatnum to 1 and –-sumtype to greedy.
+>    --allow:
+>      A text file containing a single column without header lines. Each line contains the sequence of an siRNA that user can explicitly define as allowed in the output. 
+>    --ban:
+>      A text file containing a single column without header lines. Each line contains the sequence of an siRNA that user can force the program to eliminate during the evaluation and from the output.
+>    --temp: 
+>      The path for a temporary fold containing temporary files during the run of the program. This folder will be deleted upon completion of the run. This option is particularly useful if multiple incidences of the program are run at the same time. A default path is used if this option is omitted. 
+> 
+>  Switches (no values needed after the switch)
+>    --offtarget:
+>      This switch informs the program to run off-target evaluation.
 > ```
 >
 > ## Advanced usage:
 >
-> For pre-designing model, some Evitar-designed siRNAs could be removed based on users' own standard (like experimental results). Therefore, we have a function to either remove user-removed siRNAs or keep  user-preferred siRNAs to get a new Evitar-designed siRNA set. 
+> In the pre-designing mode of Evitar, some Evitar-designed siRNAs could be undesirable based on users' criteria (such as poor experimental knockdown efficiency). Therefore, we enabled a function for users to define whether they want to remove and redesign certain siRNAs and whether they want to force certain siRNAs in the designed list. The Options of –-allow and –-ban are detailed above.
 >
 > ```
-> perl Evitar.pl --mode predesign --input test/exist_viruses.fa  --output test/future_siRNAs2.txt --allow test/allow.txt --ban test/ban.txt
+> Usage: 
+>     perl Evitar.pl --mode predesign --input test/exist_viruses.fa  --output test/future_siRNAs2.txt --allow test/allow.txt --ban test/ban.txt
+> 
 > #### Compare test/future_siRNAs2.txt with test/future_siRNAs0.txt
+> 
 > ```
 >
-> Users may evaluate siRNA off-target effects of Evitar output based on their own criterions. While Evitar also has functions about off-target effects.
+> 
 >
-> Firstly, we need download human genome data for off-target analysis. The folder ***GenomeData/weightedgene/*** contains human tissue-specific gene expression weight files. (Those files are calculated by weightedgene.sh, users could modify weightedgene.sh and get custom files.)
+> Additional Notes on Off-target Analysis:
+>
+> ​    The Evitar program uses GTEx transcriptomes of normal human tissues when evaluating off-target effects of siRNAs. If users wish to use their own custom transcriptomic data to evaluate off-target effects, we provide an example bash file below that can serve as a template for users to modify. 
+>
+> ​    The bash program GenomeData.sh is used to calculate tissue-specific gene expression weights that are used by the Evitar program. To use the GenomeData.sh, please follow the following example of commands. Output of the GenomeData.sh will be stored in the folder ***GenomeData/ ***.  The folder ***GenomeData/weightedgene/*** contains text files used to evaluate the human tissue-specific off-target effect of siRNAs.
 >
 > ```
 > cd GenomeData/
@@ -92,13 +105,13 @@
 > cd ../
 > ```
 >
-> To design siRNAs targeting **future** viruses:
+> An example of running Evitar for designing siRNAs targeting **future** viruses, with Off-target analysis on the human lung tissue, is provided below:
 >
 > ```
 > perl Evitar.pl --mode predesign --input test/exist_viruses.fa  --output test/future_siRNAs.txt --offtarget --p3utr GenomeData/utrs.fa --transcriptome GenomeData/transcripts.fa --weight GenomeData/weightedgene/Lung.txt
 > ```
 >
-> To design siRNAs targeting **input** viruses: 
+> An example of running Evitar for designing siRNAs targeting an **existing** virus, with Off-target analysis on the human lung tissue, is provided below: 
 >
 > ```
 > perl Evitar.pl --input test/genome.fa --strains test/strains.fa --output test/siRNAs.txt --offtarget --p3utr GenomeData/utrs.fa --transcriptome GenomeData/transcripts.fa --weight GenomeData/weightedgene/Lung.txt
@@ -122,7 +135,7 @@
 >
 > > Tafer, H., Ameres, S.L., Obernosterer, G., Gebeshuber, C.A., Schroeder, R., Martinez, J., and Hofacker, I.L. (2008). The impact of target site accessibility on the design of effective siRNAs. Nature Biotechnology *26*, 578–583.
 >
-> The algorithms for Cas13 designing comes from :
+> The algorithms for Cas13 designing comes from:
 >
 >
 > > Wessels, H.-H., Méndez-Mancilla, A., Guo, X., Legut, M., Daniloski, Z., and Sanjana, N.E. (2020). Massively parallel Cas13 screens reveal principles for guide RNA design. Nature Biotechnology 2020 38:6 *38*, 722–727.

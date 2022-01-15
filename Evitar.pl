@@ -14,7 +14,8 @@ my $predict = 'predsi';
 my $verifytype = 'perfect';
 my $limitnumber = 50;
 my $repeatnum = 2;
-my ($offtarget, $offtargetperfect, $tranome, $input, $p3utr, $strains, $ncores, $mutationrate, $offtargetwholematch, $offtargetpartmatch, $offtargetmirna,
+my ($offtarget, $offtargetperfect, $tranome, $input, $p3utr, $strains, $ncores, $maxgc, $mingc, $middlegc,
+ $mutationrate, $offtargetwholematch, $offtargetpartmatch, $offtargetmirna,
  $RNAplfold, $output, $parameterRNAxs, $weight, $pmcuff, $umcuff, $mircuff, $range, $sumtype, $allowlist, $banlist);
 
 GetOptions ("mode=s" => \$mode,    
@@ -43,6 +44,9 @@ GetOptions ("mode=s" => \$mode,
               "offtargetwholematch=s" => \$offtargetwholematch,
               "offtargetpartmatch=s" => \$offtargetpartmatch,
               "offtargetmirna=s" => \$offtargetmirna,
+              "maxgc=f" => \$maxgc,
+              "mingc=f" => \$mingc,
+              "middlegc=f" => \$middlegc,
 			  "ncores=i" => \$ncores)
 or die("Error in command line arguments\n");
 
@@ -70,6 +74,15 @@ if ($mode eq 'predsi') {
 		}
 		if ($tempfile) {
 			$addcommand .= " -t $tempfile ";
+		}
+		if ($maxgc) {
+			$addcommand .= " -G $maxgc ";
+		}
+		if ($mingc) {
+			$addcommand .= " -C $mingc ";
+		}
+		if ($middlegc) {
+			$addcommand .= " -g $middlegc ";
 		}
 		run("perl ${scriptsfolder}predictsiRNA -i $input -o $output $addcommand");	
 	}elsif ($predict eq 'rnaxs') {
@@ -136,15 +149,6 @@ if ($mode eq 'predsi') {
 		my $addcommand = '';
 		if ($weight) {
 			$addcommand .= " -w $weight ";
-		}
-		if ($pmcuff) {
-				$addcommand .= "-p $pmcuff ";
-		}
-		if ($umcuff) {
-				$addcommand .= "-u $umcuff ";
-		}
-		if ($mircuff) {
-			$addcommand .= "-w $mircuff ";
 		}
 		if ($ncores) {
 			run("perl ${scriptsfolder}offtargetncore -i $output -o $tempfile/offmirtemp.txt -r $p3utr -n $ncores -m $addcommand");
@@ -219,6 +223,15 @@ if ($mode eq 'predsi') {
 	if ($predict eq 'predsi') {
 		if ($RNAplfold) {
 			$addcommand .= " -p $RNAplfold ";
+		}
+		if ($maxgc) {
+			$addcommand .= " -G $maxgc ";
+		}
+		if ($mingc) {
+			$addcommand .= " -C $mingc ";
+		}
+		if ($middlegc) {
+			$addcommand .= " -g $middlegc ";
 		}
 		$addcommand = "perl ${scriptsfolder}predictsiRNA $addcommand";	
 	}elsif ($predict eq 'rnaxs') {

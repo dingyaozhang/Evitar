@@ -4,8 +4,8 @@ use warnings;
 #perl predictsiRNA.pl -i genome.fa -o 1.out
 #bin/RNAfold --infile='genome.fa' --outfile='out.out'
 use Getopt::Std;
-use vars qw($opt_i $opt_o $opt_d $opt_p $opt_t $opt_n);
-getopts('i:o:dp:t:n');
+use vars qw($opt_i $opt_o $opt_d $opt_p $opt_t $opt_n $opt_G $opt_C $opt_g);
+getopts('i:o:dp:t:nG:C:g:');
 
 my $tempfolder = '.temptempsi';
 my $depthoftempfolder = '../';
@@ -68,6 +68,15 @@ my %accessability8  = %{$indexs[0]};
 my @sequence = split(//, $sequence);
 undef $sequence;
 
+unless ($opt_G) {
+	$opt_G = 0.6;
+}
+unless ($opt_C) {
+	$opt_C = 0.25;
+}
+unless ($opt_g) {
+	$opt_g = 0.55;
+}
 
 my @outputlines;
 for (my $var = 24; $var < ($lenseq - 150); $var++) {
@@ -81,11 +90,11 @@ for (my $var = 24; $var < ($lenseq - 150); $var++) {
 	next if $tempseq2 =~ m/(.)\1{3}/;
 	my $gcscorecon = &GCcontent($tempseq);
 	my $gcscore = 1;
-	if ($gcscorecon > 0.6) {
+	if ($gcscorecon > $opt_G) {#0.6
 		next;
-	}elsif ($gcscorecon <= 0.25) {
+	}elsif ($gcscorecon <= $opt_C) {#0.25
 		next;
-	}elsif($gcscorecon > 0.55) {
+	}elsif($gcscorecon > $opt_g) {#0.55
 		$gcscore = 1;
 	}else{
 		$gcscore = 3;
