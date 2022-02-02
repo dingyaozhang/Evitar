@@ -38,45 +38,51 @@
 > Usage: perl Evitar.pl --input infile --output outfile [OPTION...]
 > 
 > infile:
->      The name of input file. For the mode of designing against future viruses, the input file is a fasta file containing sequences of existing viruses. For the mode of designing against an existing virus, the input file is a fasta file that contains a single sequence (such as the reference genome of the virus).
+>   The name of input file. For the mode of designing against future viruses, the input file is a fasta file containing sequences of existing viruses. For the mode of designing against an existing virus, the input file is a fasta file that contains a single sequence (such as the reference genome of the virus).
 > outfile:
->     The name of output file. Output will be in text file format. The output fields are described in the first line of the file. 
->     
->  Options (need to include values after the option switches):
->    --predict:
->      A text string defining whether to design siRNAs or Cas13a gRNAs, and for siRNAs, which designing algorithm to be used. Allowed values are “predsi” for using the GPP-Portal-like siRNA-designing algorithm, or “rnaxs” for using the RNAxs siRNA-designing algorithm, or “CRISPR” for designing Cas13a gRNA. 
->    --ncores:
->      The number of threads used in the multithread mode. Default is 1.
->    --strains:
->      A fasta file containing sequences of viral strains for a virus of interest(used for the mode of designing against an existing virus)  
->    --p3utr:
->      A fasta file containing the 3'UTR regions of the transcriptome
->    --tranome:
->      A fasta file containing the sequences of the transcriptome
->    --weight:
->      A text file used to evaluate the off-target effect of siRNAs. The file contains three columns with a single header line. First column is for ENSEMBL Gene ID. Second column contains Gene Symbol. Third column contains a numerical value for the weight of the corresponding gene. Each row contains information for one gene.
->    --pmcuff:
->      An integer value defining the maximum cutoff when evaluating off-target effects of siRNAs on perfect match with the transcriptome. Any siRNAs with the number of perfect matches larger or equal to this cutoff will be removed from consideration. Default is 1.
->    --umcuff:
->      A numerical value defining the maximum cutoff when evaluating off-target effects of siRNAs on imperfect match with the transcriptome. Imperfect match are those with extensive matches but not complete match between siRNA and a transcript. An off-target score is calculated based on this cutoff. Default: 20.
->    --mircuff:
->      A numerical value defining the maximum cutoff when evaluating off-target effects of siRNAs on miRNA-like off-target effects. miRNA-like off-target effects are evaluated based on the match between the seed sequence of the siRNA and a transcript. An off-target score is calculated based on this cutoff. Default: 20000.
->    --sumtype:
->      A text string input of either “SGAR” or “greedy”. SGAR means running the SGAR algorithm when selecting siRNAs into a collection. Greedy means running the GAR algorithm when selecting siRNAs into a collection. The default is SGAR. This option is only used when running in the mode of predesigning against future viruses.
->    --limitnum:
->      An integer value defining the number of siRNAs/Cas13a gRNAs to be output into a collection. Default is 30. This option is only used when running in the mode of predesigning against future viruses.
->    --repeatnum:
->      An integer value defining the Multi-siRNA parameter, which is used to increase the robustness of identifying more than one siRNA/Cas13 gRNA in a collection against a future virus. Default is 3. This option is only used when running in the mode of predesigning against future viruses. Note that to run Evitar with the conventional greedy algorithm, set –-repeatnum to 1 and –-sumtype to greedy.
->    --allow:
->      A text file containing a single column without header lines. Each line contains the sequence of an siRNA that user can explicitly define as allowed in the output. 
->    --ban:
->      A text file containing a single column without header lines. Each line contains the sequence of an siRNA that user can force the program to eliminate during the evaluation and from the output.
->    --temp: 
->      The path for a temporary fold containing temporary files during the run of the program. This folder will be deleted upon completion of the run. This option is particularly useful if multiple incidences of the program are run at the same time. A default path is used if this option is omitted. 
+>  The name of output file. Output will be in text file format. The output fields are described in the first line of the file. 
 > 
->  Switches (no values needed after the switch)
->    --offtarget:
->      This switch informs the program to run off-target evaluation.
+> Options (need to include values after the option switches):
+> --predict:
+>   A text string defining whether to design siRNAs or Cas13a gRNAs, and for siRNAs, which designing algorithm to be used. Allowed values are “predsi” for using the GPP-Portal-like siRNA-designing algorithm, or “rnaxs” for using the RNAxs siRNA-designing algorithm, or “CRISPR” for designing Cas13a gRNA. 
+> --ncores:
+>   The number of threads used in the multithread mode. Default is 1.
+> --strains:
+>   A fasta file containing sequences of viral strains for a virus of interest(used for the mode of designing against an existing virus)  
+> --p3utr:
+>   A fasta file containing the 3'UTR regions of the transcriptome
+> --tranome:
+>   A fasta file containing the sequences of the transcriptome
+> --weight:
+>   A text file used to evaluate the off-target effect of siRNAs. The file contains three columns with a single header line. First column is for ENSEMBL Gene ID. Second column contains Gene Symbol. Third column contains a numerical value for the weight of the corresponding gene. Each row contains information for one gene.
+> --pmcuff:
+>   An integer value defining the maximum cutoff when evaluating off-target effects of siRNAs on perfect match with the transcriptome. Any siRNAs with the number of perfect matches larger or equal to this cutoff will be removed from consideration. Default is 1.
+> --umcuff:
+>   A numerical value defining the maximum cutoff when evaluating off-target effects of siRNAs on imperfect match with the transcriptome. Imperfect match are those with extensive matches but not complete match between siRNA and a transcript. An off-target score is calculated based on this cutoff. Default: 20.
+> --mircuff:
+>   A numerical value defining the maximum cutoff when evaluating off-target effects of siRNAs on miRNA-like off-target effects. miRNA-like off-target effects are evaluated based on the match between the seed sequence of the siRNA and a transcript. An off-target score is calculated based on this cutoff. Default: 20000.
+> --sumtype:
+>   A text string input of either “SGAR” or “greedy”. SGAR means running the SGAR algorithm when selecting siRNAs into a collection. Greedy means running the GAR algorithm when selecting siRNAs into a collection. The default is SGAR. This option is only used when running in the mode of predesigning against future viruses.
+> --limitnum:
+>   An integer value defining the number of siRNAs/Cas13a gRNAs to be output into a collection. Default is 30. This option is only used when running in the mode of predesigning against future viruses.
+> --repeatnum:
+>   An integer value defining the Multi-siRNA parameter, which is used to increase the robustness of identifying more than one siRNA/Cas13 gRNA in a collection against a future virus. Default is 3. This option is only used when running in the mode of predesigning against future viruses. Note that to run Evitar with the conventional greedy algorithm, set –-repeatnum to 1 and –-sumtype to greedy.
+> --allow:
+>   A text file containing a single column without header lines. Each line contains the sequence of an siRNA that user can explicitly define as allowed in the output. 
+> --ban:
+>   A text file containing a single column without header lines. Each line contains the sequence of an siRNA that user can force the program to eliminate during the evaluation and from the output.
+> --temp: 
+>   The path for a temporary fold containing temporary files during the run of the program. This folder will be deleted upon completion of the run. This option is particularly useful if multiple incidences of the program are run at the same time. A default path is used if this option is omitted. 
+> --maxgc:
+>   A numerical value defining the maximal cutoff of GC content when predicting effective siRNAs. Default: 0.6.
+> --mingc:
+>   A numerical value defining the minimal cutoff of GC content when predicting effective siRNAs. Default: 0.25.
+> --middlegc:
+>   A numerical value defining the cutoff between optimal GC content and suboptimal GC content when predicting effective siRNAs. If the GC content is between this value and maximal content, the GC content is thought as suboptimal GC content, and the evaluation score will be decreased. Default: 0.55.
+> 
+> Switches (no values needed after the switch)
+> --offtarget:
+>   This switch informs the program to run off-target evaluation.
 > ```
 >
 > ## Advanced usage:
@@ -85,7 +91,7 @@
 >
 > ```
 > Usage: 
->     perl Evitar.pl --mode predesign --input test/exist_viruses.fa  --output test/future_siRNAs2.txt --allow test/allow.txt --ban test/ban.txt
+>  perl Evitar.pl --mode predesign --input test/exist_viruses.fa  --output test/future_siRNAs2.txt --allow test/allow.txt --ban test/ban.txt
 > 
 > #### Compare test/future_siRNAs2.txt with test/future_siRNAs0.txt
 > 
